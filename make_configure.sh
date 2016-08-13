@@ -2,11 +2,12 @@
 
 cat > Makefile.am <<\
     "--------------"
-AM_YFLAGS=-d
+#AM_YFLAGS=-d
 AM_CFLAGS=-g -Wall -O2
 bin_PROGRAMS=tlisp
 tlisp_SOURCES=main.c
 tlisp_CFLAGS=$(AM_CFLAGS) -O0
+tlisp_LDADD=-ledit
 #calc_LDADD=@LEXLIB@
 --------------
 
