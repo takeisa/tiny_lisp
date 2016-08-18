@@ -18,11 +18,13 @@ sed -e 's/FULL-PACKAGE-NAME/tlisp/' \
     -e 's|BUG-REPORT-ADDRESS|/dev/null|' \
     -e '10i\
 AM_INIT_AUTOMAKE\
+'\
+    -e '/AC_PROG_CC/a\
+AC_PROG_CC_C99\
 # AM_PROG_LEX\
 # AC_PROG_YACC\
-CFLAGS="-g -O0"\
-AC_PROG_CC_C99\
-' \
+#CFLAGS="-g -O0"\
+'\
     < configure.scan > configure.ac
 
 touch NEWS README AUTHORS ChangeLog
