@@ -4,6 +4,45 @@
 #include <editline/readline.h>
 #include <editline/history.h>
 
+int number_of_nodes(mpc_ast_t* t) {
+  if (t->children_num == 0) {
+    return 1;
+  } else {
+    int total = 1;
+    for (int i = 0; i < t->children_num; i++) {
+      total += number_of_nodes(t->children[i]);
+    }
+    return total;
+  }
+}
+
+long eval_op(char* op, long x, long y) {
+  printf("eval_op: op=%s x=%li y=%li\n", op, x, y);
+  if (strcmp(op, "+") == 0) { return x + y; };
+  if (strcmp(op, "-") == 0) { return x - y; };
+  if (strcmp(op, "*") == 0) { return x * y; };
+  if (strcmp(op, "/") == 0) { return x / y; };
+  return 0;
+}
+
+long eval(mpc_ast_t* t) {
+  if (strstr(t->tag, "number")) {
+    return atol(t->contents);
+  }
+
+  char* op = t->children[1]->contents;
+
+  long x = eval(t->children[2]);
+
+  int i = 3;
+  while (strstr(t->children[i]->tag, "expr")) {
+    x = eval_op(op, x, eval(t->children[i]));
+    i++;
+  }
+  
+  return x;
+}
+
 int main(int argc, char *argv[]) {
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Operator = mpc_new("operator");
@@ -28,6 +67,9 @@ program	 : /^/ <operator> <expr>+ /$/ ; \
 
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Program, &r)) {
+      long result = eval(r.output);
+      printf("%li\n", result);
+      printf("number_of_nodes: %d\n", number_of_nodes(r.output));
       mpc_ast_print(r.output);
       mpc_ast_delete(r.output);
     } else {
