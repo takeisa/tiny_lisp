@@ -34,6 +34,11 @@ long eval(mpc_ast_t* t) {
 
   long x = eval(t->children[2]);
 
+  if ((strcmp(op, "-") == 0)
+      && (t->children_num == 4)) {
+    return -x;
+  }
+  
   int i = 3;
   while (strstr(t->children[i]->tag, "expr")) {
     x = eval_op(op, x, eval(t->children[i]));
