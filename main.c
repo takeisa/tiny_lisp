@@ -4,7 +4,52 @@
 #include <editline/readline.h>
 #include <editline/history.h>
 
-int number_of_nodes(mpc_ast_t* t) {
+typedef struct {
+  int type;
+  long num;
+  int err;
+} lval;
+
+enum {
+  LVAL_NUM,
+  LVAL_ERR };
+
+enum {
+  LERR_DIV_ZERO,
+  LERR_BAD_OP,
+  LERR_BAD_NUM };
+
+char *ERR_MESSAGES[] = {
+  "Division by zero",
+  "Invalid operator",
+  "Invalid number"
+};
+
+lval lval_num(long num) {
+  return (lval) {.type = LVAL_NUM, .num = num};
+}
+
+lval lval_err(int err) {
+  return (lval) {.type = LVAL_ERR, .err = err};
+}
+
+void lval_print(lval const *v) {
+  switch (v->type) {
+  case LVAL_NUM:
+    printf("%li", v->num);
+    break;
+  case LVAL_ERR:
+    printf("Error: %s", ERR_MESSAGES[v->err]);
+    break;
+  }
+}
+
+void lval_println(lval const *v) {
+  lval_print(v);
+  putchar('\n');
+}
+
+int number_of_nodes(mpc_ast_t *t) {
   if (t->children_num == 0) {
     return 1;
   } else {
@@ -16,27 +61,41 @@ int number_of_nodes(mpc_ast_t* t) {
   }
 }
 
-long eval_op(char* op, long x, long y) {
-  printf("eval_op: op=%s x=%li y=%li\n", op, x, y);
-  if (strcmp(op, "+") == 0) { return x + y; };
-  if (strcmp(op, "-") == 0) { return x - y; };
-  if (strcmp(op, "*") == 0) { return x * y; };
-  if (strcmp(op, "/") == 0) { return x / y; };
-  return 0;
+lval eval_op(char *op, lval x, lval y) {
+  printf("eval_op: op=%s", op);
+  printf(" x="); lval_print(&x);
+  printf(" y="); lval_println(&y);
+
+  if (x.type == LVAL_ERR) { return x; }
+  if (y.type == LVAL_ERR) { return y; }
+
+  if (strcmp(op, "+") == 0) { return lval_num(x.num + y.num); }
+  if (strcmp(op, "-") == 0) { return lval_num(x.num - y.num); }
+  if (strcmp(op, "*") == 0) { return lval_num(x.num * y.num); }
+  if (strcmp(op, "/") == 0) {
+    return y.num == 0
+      ? lval_err(LERR_DIV_ZERO)
+      : lval_num(x.num / y.num);
+  }
+
+  return lval_err(LERR_BAD_OP);
 }
 
-long eval(mpc_ast_t* t) {
+lval eval(mpc_ast_t *t) {
   if (strstr(t->tag, "number")) {
-    return atol(t->contents);
+    long x = strtol(t->contents, NULL, 10);
+    return errno == ERANGE
+      ? lval_err(LERR_BAD_NUM)
+      : lval_num(x);
   }
 
   char* op = t->children[1]->contents;
 
-  long x = eval(t->children[2]);
+  lval x = eval(t->children[2]);
 
   if ((strcmp(op, "-") == 0)
       && (t->children_num == 4)) {
-    return -x;
+    return lval_num(-x.num);
   }
   
   int i = 3;
@@ -72,9 +131,8 @@ program	 : /^/ <operator> <expr>+ /$/ ; \
 
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Program, &r)) {
-      long result = eval(r.output);
-      printf("%li\n", result);
-      printf("number_of_nodes: %d\n", number_of_nodes(r.output));
+      lval result = eval(r.output);
+      lval_println(&result);
       mpc_ast_print(r.output);
       mpc_ast_delete(r.output);
     } else {
