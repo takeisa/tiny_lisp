@@ -88,7 +88,7 @@ lval *lval_read_num(mpc_ast_t *t) {
 }
 
 lval *lval_add_cell(lval *v, lval *cell) {
-  v->cell = realloc(v->cell, sizeof(lval) * v->count + 1);
+  v->cell = realloc(v->cell, sizeof(lval) * (v->count + 1));
   v->cell[v->count] = cell;
   v->count++;
   return v;
@@ -180,13 +180,13 @@ lval *lval_take(lval *v, int i) {
   return x;
 }
 
+#define LASSERT(args, cond, err) \
+  if (!(cond)) { lval_del(args); return lval_err(err); }
+
 lval *builtin_op(lval *arg, char* op) {
   // Ensure all arguments are numbers
   for (int i = 0; i < arg->count; i++) {
-    if (arg->cell[i]->type != LVAL_NUM) {
-      lval_del(arg);
-      return lval_err("Cannot operate on non-number");
-    }
+    LASSERT(arg, arg->cell[i]->type == LVAL_NUM, "Cannot operate on non-number");
   }
 
   lval *x = lval_pop(arg, 0);
@@ -222,8 +222,104 @@ lval *builtin_op(lval *arg, char* op) {
   return x;
 }
 
-
 lval *lval_eval(lval *v);
+
+lval *builtin_list(lval *arg) {
+  arg->type = LVAL_QEXPR;
+  return arg;
+}
+
+lval *builtin_head(lval *arg) {
+  LASSERT(arg, arg->count <= 1,
+	  "Function 'head' passed too many arguments");
+  LASSERT(arg, arg->cell[0]->type == LVAL_QEXPR,
+	  "Function 'head' passed incorrect types");
+  LASSERT(arg, arg->cell[0]->count > 0,
+	  "Function 'head' passed {}");
+
+  printf("head: arg="); lval_print(arg); putchar('\n');
+  lval* arg0 = lval_take(arg, 0);
+  printf("head: arg0="); lval_print(arg0); putchar('\n');
+  lval* head = lval_take(arg0, 0);
+  printf("head: head="); lval_print(head); putchar('\n');
+  return head;
+}
+
+lval *builtin_tail(lval *arg) {
+  LASSERT(arg, arg->count <= 1,
+	  "Function 'tail' passed too many arguments");
+  LASSERT(arg, arg->cell[0]->type == LVAL_QEXPR,
+	  "Function 'tail' passed incorrect types");
+  LASSERT(arg, arg->cell[0]->count > 0,
+	  "Function 'tail' passed {}");
+
+  printf("tail: arg="); lval_print(arg); putchar('\n');
+  lval* arg0 = lval_take(arg, 0);
+  printf("tail: arg0="); lval_print(arg0); putchar('\n');
+  lval_del(lval_pop(arg0, 0));
+  printf("tail: arg="); lval_print(arg); putchar('\n');
+  return arg0;
+}
+
+
+lval *lval_join(lval *x, lval *y) {
+    while (y->count > 0) {
+      lval_add_cell(x, lval_pop(y, 0));
+    }
+    lval_del(y);
+    return x;
+}
+
+lval *builtin_join(lval *arg) {
+  for (int i = 0; i < arg->count; i++) {
+    LASSERT(arg, arg->cell[i]->type == LVAL_QEXPR,
+	    "Function 'join' passed incorrect types");
+  }
+  lval *x = lval_pop(arg, 0);
+
+  while (arg->count > 0) {
+    x = lval_join(x, lval_pop(arg, 0));
+  }
+
+  lval_del(arg);
+
+  return x;
+}
+
+lval *builtin_eval(lval *arg) {
+  LASSERT(arg, arg->count == 1,
+    "Function 'eval' passed too many arguments");
+
+  lval *arg0 = arg->cell[0];
+  LASSERT(arg, arg0->type == LVAL_QEXPR,
+    "Function 'eval' passed incorrect type");
+
+  arg0->type = LVAL_SEXPR;
+  return lval_eval(arg0);
+}
+
+lval *builtin(lval *arg, char *func) {
+  if (strcmp(func, "list") == 0) {
+    return builtin_list(arg);
+  }
+  if (strcmp(func, "head") == 0) {
+    return builtin_head(arg);
+  }
+  if (strcmp(func, "tail") == 0) {
+    return builtin_tail(arg);
+  }
+  if (strcmp(func, "join") == 0) {
+    return builtin_join(arg);
+  }
+  if (strcmp(func, "eval") == 0) {
+    return builtin_eval(arg);
+  }
+  if (strstr("+-*/", func)) {
+    return builtin_op(arg, func);
+  }
+  lval_del(arg);
+  return lval_err("Unknown function");
+}
 
 lval *lval_eval_sexpr(lval *v) {
   for (int i = 0; i < v->count; i++) {
@@ -250,7 +346,7 @@ lval *lval_eval_sexpr(lval *v) {
     return lval_err("S-expression does not start with symbol");
   }
 
-  lval *result = builtin_op(v, first->sym);
+  lval *result = builtin(v, first->sym);
   lval_del(first);
 
   return result;
@@ -274,7 +370,8 @@ int main(int argc, char *argv[]) {
   mpca_lang(MPCA_LANG_DEFAULT,
 	    "\
 number   : /-?[0-9]+/ ; \
-symbol   : '+' | '-' | '*' | '/' ; \
+symbol   : \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\" \
+           | '+' | '-' | '*' | '/' ;					\
 sexpr    : '(' <expr>* ')' ; \
 qexpr    : '{' <expr>* '}' ; \
 expr     : <number> | <symbol> | <sexpr> | <qexpr> ; \
