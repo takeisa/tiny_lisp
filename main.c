@@ -1,6 +1,7 @@
 #include "mpc.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <editline/readline.h>
 #include <editline/history.h>
 
@@ -36,6 +37,17 @@ typedef struct lenv {
   lval **vals;
 } lenv;
 
+char *ltype_name(int t) {
+  switch (t) {
+  case LVAL_NUM: return "Number";
+  case LVAL_SYM: return "Symbol";
+  case LVAL_FUN: return "Function";
+  case LVAL_SEXPR: return "S-Expression";
+  case LVAL_QEXPR: return "Q-Expression";
+  default: return "Unknown";
+  }
+}
+
 lval *lval_num(long num) {
   lval *v = malloc(sizeof(lval));
   v->type = LVAL_NUM;
@@ -43,11 +55,19 @@ lval *lval_num(long num) {
   return v;
 }
 
-lval *lval_err(char const *err) {
+lval *lval_err(char const *format, ...) {
   lval *v = malloc(sizeof(lval));
   v->type = LVAL_ERR;
-  v->err = malloc(strlen(err) + 1);
-  strcpy(v->err, err);
+
+  va_list va;
+  va_start(va, format);
+
+  v->err = malloc(512);
+  vsnprintf(v->err, 512 - 1, format, va);
+  v->err = realloc(v->err, strlen(v->err) + 1);
+
+  va_end(va);
+
   return v;
 }
 
@@ -263,7 +283,7 @@ lval *lenv_get(lenv *e, lval *k) {
       return lval_copy(e->vals[i]);
     }
   }
-  return lval_err("unbound symbol");
+  return lval_err("unbound symbol '%s'", k->sym);
 }
 
 void lenv_put(lenv *e, lval *k, lval *v) {
@@ -285,8 +305,11 @@ void lenv_put(lenv *e, lval *k, lval *v) {
   e->vals[e->count - 1] = lval_copy(v);
 }
 
-#define LASSERT(args, cond, err) \
-  if (!(cond)) { lval_del(args); return lval_err(err); }
+#define LASSERT(args, cond, format, ...) \
+  if (!(cond)) { \
+    lval_del(args); \
+    return lval_err(format, ##__VA_ARGS__); \
+  }
 
 lval *lval_eval(lenv *e, lval *v);
 
@@ -356,9 +379,13 @@ lval *builtin_list(lenv *e, lval *arg) {
 
 lval *builtin_head(lenv *e, lval *arg) {
   LASSERT(arg, arg->count <= 1,
-	  "Function 'head' passed too many arguments");
+	  "Function 'head' passed too many arguments. "
+	  "Got %i, Expected %i.",
+	  arg->count, 1);
   LASSERT(arg, arg->cell[0]->type == LVAL_QEXPR,
-	  "Function 'head' passed incorrect types");
+	  "Function 'head' passed incorrect type for argument 0. "
+	  "Got %s, Expected %s.",
+	  ltype_name(arg->cell[0]->type), ltype_name(LVAL_QEXPR));
   LASSERT(arg, arg->cell[0]->count > 0,
 	  "Function 'head' passed {}");
 
@@ -373,9 +400,13 @@ lval *builtin_head(lenv *e, lval *arg) {
 
 lval *builtin_tail(lenv *e, lval *arg) {
   LASSERT(arg, arg->count <= 1,
-	  "Function 'tail' passed too many arguments");
+	  "Function 'tail' passed too many arguments. "
+	  "Got %i, Expected %i.",
+	  arg->count, 1);
   LASSERT(arg, arg->cell[0]->type == LVAL_QEXPR,
-	  "Function 'tail' passed incorrect types");
+	  "Function 'tail' passed incorrect type for argument 0. "
+	  "Got %s, Expected %s.",
+	  ltype_name(arg->cell[0]->type), ltype_name(LVAL_QEXPR));
   LASSERT(arg, arg->cell[0]->count > 0,
 	  "Function 'tail' passed {}");
 
@@ -413,6 +444,29 @@ lval *builtin_eval(lenv *e, lval *arg) {
 
   arg0->type = LVAL_SEXPR;
   return lval_eval(e, arg0);
+}
+
+lval *builtin_def(lenv *e, lval *arg) {
+  LASSERT(arg, arg->cell[0]->type == LVAL_QEXPR,
+	  "Function 'def' passed incorrect type");
+
+  lval *syms = arg->cell[0];
+
+  for (int i = 0; i < syms->count; i++) {
+    LASSERT(arg, syms->cell[i]->type == LVAL_SYM,
+	    "Function 'def' cannot define non-symbol");
+  }
+
+  LASSERT(arg, syms->count == arg->count - 1,
+	  "Function 'def' cannot define incorrect "
+	  "number of values to symbols");
+
+  for (int i = 0; i < syms->count; i++) {
+    lenv_put(e, syms->cell[i], arg->cell[i + 1]);
+  }
+
+  lval_del(arg);
+  return lval_sexpr();
 }
 
 lval *builtin_op(lenv *e, lval *arg, char* op) {
@@ -476,6 +530,7 @@ void lenv_add_builtins(lenv *e) {
   lenv_add_builtin(e, "tail", builtin_tail);
   lenv_add_builtin(e, "join", builtin_join);
   lenv_add_builtin(e, "eval", builtin_eval);
+  lenv_add_builtin(e, "def", builtin_def);
 
   lenv_add_builtin(e, "+", builtin_add);
   lenv_add_builtin(e, "-", builtin_sub);
@@ -517,7 +572,7 @@ program	 : /^/ <expr>* /$/ ; \
       lval *result = lval_eval(e, lval_read(r.output));
       lval_println(result);
       lval_del(result);
-      mpc_ast_print(r.output);
+      //      mpc_ast_print(r.output);
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
