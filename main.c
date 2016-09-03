@@ -362,12 +362,13 @@ lval *builtin_head(lenv *e, lval *arg) {
   LASSERT(arg, arg->cell[0]->count > 0,
 	  "Function 'head' passed {}");
 
-  printf("head: arg="); lval_print(arg); putchar('\n');
-  lval* arg0 = lval_take(arg, 0);
-  printf("head: arg0="); lval_print(arg0); putchar('\n');
-  lval* head = lval_take(arg0, 0);
-  printf("head: head="); lval_print(head); putchar('\n');
-  return head;
+  lval *first = lval_take(arg, 0);
+
+  while (first->count > 1) {
+    lval_pop(first, 1);
+  }
+
+  return first;
 }
 
 lval *builtin_tail(lenv *e, lval *arg) {
