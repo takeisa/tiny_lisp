@@ -40,6 +40,7 @@ lval *lval_eval(lenv *e, lval *v);
 lval *lval_add_cell(lval *v, lval *a);
 
 lval *builtin_eval(lenv *e, lval *arg);
+lval *builtin_list(lenv *e, lval *arg);
 
 enum {
   LVAL_NUM,
@@ -420,6 +421,20 @@ lval *lval_call(lenv *e, lval *fun, lval *arg) {
     }
 
     lval *sym = lval_pop(fun->formals, 0);
+
+    if (strcmp(sym->sym, "&") == 0) {
+      if (fun->formals-> count != 1) {
+        lval_del(arg);
+        return lval_err("Function format invalid."
+                        "Symbol '&' not followed by single symbol.");
+      }
+
+      lval *next_sym = lval_pop(fun->formals, 0);
+      lenv_put(fun->env, next_sym, builtin_list(e, arg));
+      lval_del(next_sym);
+      break;
+    }
+    
     lval *val = lval_pop(arg, 0);
 
     lenv_put(fun->env, sym, val);
