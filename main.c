@@ -606,9 +606,9 @@ lval *builtin_var(lenv *e, lval *arg, char *func) {
 	  "number of values to symbols");
 
   for (int i = 0; i < syms->count; i++) {
-    if (strcmp(func, "def")) {
+    if (strcmp(func, "def") == 0) {
       lenv_def(e, syms->cell[i], arg->cell[i + 1]);
-    } else if (strcmp(func, "=")) {
+    } else if (strcmp(func, "=") == 0) {
       lenv_put(e, syms->cell[i], arg->cell[i + 1]);
     }
   }
